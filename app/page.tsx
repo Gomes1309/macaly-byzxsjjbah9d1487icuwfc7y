@@ -13,6 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Toaster } from '@/components/ui/toaster'
 import { useToast } from '@/hooks/use-toast'
+import { useAlvaras } from '@/hooks/useAlvaras'
+import { AuthService } from '@/lib/supabase'
+import { setupDatabase } from '@/lib/database-setup'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 
@@ -62,7 +65,6 @@ const VALID_CREDENTIALS = {
 }
 
 export default function SistemaAlvara() {
-  const [alvaras, setAlvaras] = useState<Alvara[]>([])
   const [filtroTipo, setFiltroTipo] = useState<string>('todos')
   const [filtroStatus, setFiltroStatus] = useState<string>('todos')
   const [pesquisa, setPesquisa] = useState('')
@@ -73,6 +75,17 @@ export default function SistemaAlvara() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loginError, setLoginError] = useState('')
   const { toast } = useToast()
+
+  // Supabase hook
+  const { 
+    alvaras, 
+    loading, 
+    error,
+    addAlvara,
+    updateAlvara,
+    deleteAlvara,
+    refreshAlvaras
+  } = useAlvaras()
 
   // Login state
   const [loginData, setLoginData] = useState({
@@ -93,186 +106,123 @@ export default function SistemaAlvara() {
     contato: ''
   })
 
-  // Update alvara status based on expiration date
-  const updateAlvaraStatus = useCallback((alvara: Alvara): Alvara => {
-    const today = new Date()
-    const daysToExpire = differenceInDays(alvara.dataVencimento, today)
-    
-    let newStatus: Alvara['status']
-    if (daysToExpire < 0) {
-      newStatus = 'vencido'
-    } else if (daysToExpire <= 30) {
-      newStatus = 'vencendo'
-    } else {
-      newStatus = 'em_dia'
-    }
-    
-    return { ...alvara, status: newStatus }
-  }, [])
-
   // Initial setup
   useEffect(() => {
     // Check authentication
     const savedAuth = localStorage.getItem('auth_token')
     if (savedAuth === 'authenticated') {
       setIsAuthenticated(true)
-    }
-
-    // Load data
-    const savedAlvaras = localStorage.getItem('alvaras')
-    if (savedAlvaras) {
-      try {
-        const parsedAlvaras = JSON.parse(savedAlvaras).map((alvara: any) => ({
-          ...alvara,
-          dataEmissao: new Date(alvara.dataEmissao),
-          dataVencimento: new Date(alvara.dataVencimento)
-        }))
-        setAlvaras(parsedAlvaras.map(updateAlvaraStatus))
-      } catch (error) {
-        console.error('Error loading data:', error)
-      }
-    } else {
-      // Sample data
-      const sampleData: Alvara[] = [
-        {
-          id: '1',
-          empresa: 'Restaurante Sabor Mineiro',
-          cnpj: '12.345.678/0001-90',
-          tipo: 'vigilancia_sanitaria',
-          numeroProtocolo: 'VS-2024-001',
-          dataEmissao: new Date('2024-01-15'),
-          dataVencimento: new Date('2025-01-15'),
-          status: 'em_dia',
-          observacoes: 'Renovação sem pendências',
-          responsavel: 'João Silva',
-          contato: '(11) 99999-9999'
-        },
-        {
-          id: '2',
-          empresa: 'Farmácia Central',
-          cnpj: '98.765.432/0001-10',
-          tipo: 'vigilancia_sanitaria',
-          numeroProtocolo: 'VS-2024-002',
-          dataEmissao: new Date('2024-07-01'),
-          dataVencimento: new Date('2025-07-01'),
-          status: 'vencendo',
-          observacoes: 'Vencimento próximo - providenciar renovação',
-          responsavel: 'Maria Santos',
-          contato: '(11) 88888-8888'
-        },
-        {
-          id: '3',
-          empresa: 'Hotel Estrela',
-          cnpj: '11.222.333/0001-44',
-          tipo: 'bombeiro',
-          numeroProtocolo: 'CB-2024-003',
-          dataEmissao: new Date('2023-12-01'),
-          dataVencimento: new Date('2024-12-01'),
-          status: 'vencido',
-          observacoes: 'URGENTE: Alvará vencido - regularizar imediatamente',
-          responsavel: 'Carlos Oliveira',
-          contato: '(11) 77777-7777'
-        },
-        {
-          id: '4',
-          empresa: 'Loja do Centro',
-          cnpj: '55.666.777/0001-88',
-          tipo: 'municipal',
-          numeroProtocolo: 'MUN-2024-004',
-          dataEmissao: new Date('2024-03-10'),
-          dataVencimento: new Date('2025-03-10'),
-          status: 'em_dia',
-          observacoes: 'Alvará de funcionamento municipal renovado',
-          responsavel: 'Ana Costa',
-          contato: '(11) 66666-6666'
+      // Setup database when authenticated
+      setupDatabase().then(result => {
+        if (result.success) {
+          console.log('Database setup concluído!')
+        } else {
+          console.error('Erro no setup do database:', result.error)
         }
-      ]
-      setAlvaras(sampleData.map(updateAlvaraStatus))
+      })
     }
-  }, [updateAlvaraStatus])
-
-  // Save data when alvaras change
-  useEffect(() => {
-    if (alvaras.length > 0) {
-      localStorage.setItem('alvaras', JSON.stringify(alvaras))
-    }
-  }, [alvaras])
+  }, [])
 
   // Login handler
-  const handleLogin = useCallback(() => {
+  const handleLogin = useCallback(async () => {
     setLoginError('')
     
-    if (loginData.email === VALID_CREDENTIALS.email && loginData.password === VALID_CREDENTIALS.password) {
+    try {
+      await AuthService.signIn(loginData.email, loginData.password)
       setIsAuthenticated(true)
       localStorage.setItem('auth_token', 'authenticated')
       
       toast({
         title: "Login realizado com sucesso!",
-        description: "Bem-vindo ao sistema de controle de alvarás.",
+        description: "Conectado ao Supabase com sucesso.",
       })
-    } else {
+    } catch (error) {
+      console.error('Erro no login:', error)
       setLoginError('Email ou senha incorretos')
     }
   }, [loginData, toast])
 
   // Logout handler
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    try {
+      await AuthService.signOut()
+    } catch (error) {
+      console.error('Erro no logout:', error)
+    }
+    
     setIsAuthenticated(false)
     localStorage.removeItem('auth_token')
     setLoginData({ email: '', password: '' })
     
     toast({
       title: "Logout realizado",
-      description: "Você foi desconectado do sistema.",
+      description: "Você foi desconectado do Supabase.",
     })
   }, [toast])
 
   // Add alvara handler
-  const handleAddAlvara = useCallback(() => {
-    const newAlvara: Alvara = {
-      id: Date.now().toString(),
-      empresa: formData.empresa,
-      cnpj: formData.cnpj,
-      tipo: formData.tipo,
-      numeroProtocolo: formData.numeroProtocolo,
-      dataEmissao: new Date(formData.dataEmissao),
-      dataVencimento: new Date(formData.dataVencimento),
-      status: 'em_dia',
-      observacoes: formData.observacoes,
-      responsavel: formData.responsavel,
-      contato: formData.contato
+  const handleAddAlvara = useCallback(async () => {
+    try {
+      const newAlvaraData = {
+        empresa: formData.empresa,
+        cnpj: formData.cnpj,
+        tipo: formData.tipo,
+        numeroProtocolo: formData.numeroProtocolo,
+        dataEmissao: new Date(formData.dataEmissao),
+        dataVencimento: new Date(formData.dataVencimento),
+        observacoes: formData.observacoes,
+        responsavel: formData.responsavel,
+        contato: formData.contato
+      }
+
+      await addAlvara(newAlvaraData)
+      
+      setFormData({
+        empresa: '',
+        cnpj: '',
+        tipo: 'vigilancia_sanitaria',
+        numeroProtocolo: '',
+        dataEmissao: '',
+        dataVencimento: '',
+        observacoes: '',
+        responsavel: '',
+        contato: ''
+      })
+      setShowAddDialog(false)
+      
+      toast({
+        title: "Alvará adicionado com sucesso!",
+        description: `Alvará da ${newAlvaraData.empresa} foi cadastrado no Supabase.`,
+      })
+    } catch (error) {
+      console.error('Erro ao adicionar alvará:', error)
+      toast({
+        title: "Erro ao adicionar alvará",
+        description: "Tente novamente.",
+        variant: "destructive"
+      })
     }
-    
-    setAlvaras(prev => [...prev, updateAlvaraStatus(newAlvara)])
-    setFormData({
-      empresa: '',
-      cnpj: '',
-      tipo: 'vigilancia_sanitaria',
-      numeroProtocolo: '',
-      dataEmissao: '',
-      dataVencimento: '',
-      observacoes: '',
-      responsavel: '',
-      contato: ''
-    })
-    setShowAddDialog(false)
-    
-    toast({
-      title: "Alvará adicionado com sucesso!",
-      description: `Alvará da ${newAlvara.empresa} foi cadastrado.`,
-    })
-  }, [formData, updateAlvaraStatus, toast])
+  }, [formData, addAlvara, toast])
 
   // Delete alvara handler
-  const handleDeleteAlvara = useCallback((id: string) => {
-    const alvara = alvaras.find(a => a.id === id)
-    setAlvaras(prev => prev.filter(a => a.id !== id))
-    
-    toast({
-      title: "Alvará removido",
-      description: `Alvará da ${alvara?.empresa} foi removido do sistema.`,
-    })
-  }, [alvaras, toast])
+  const handleDeleteAlvara = useCallback(async (id: string) => {
+    try {
+      const alvara = alvaras.find(a => a.id === id)
+      await deleteAlvara(id)
+      
+      toast({
+        title: "Alvará removido",
+        description: `Alvará da ${alvara?.empresa} foi removido do Supabase.`,
+      })
+    } catch (error) {
+      console.error('Erro ao deletar alvará:', error)
+      toast({
+        title: "Erro ao deletar alvará",
+        description: "Tente novamente.",
+        variant: "destructive"
+      })
+    }
+  }, [alvaras, deleteAlvara, toast])
 
   // Filter alvaras
   const filteredAlvaras = alvaras.filter(alvara => {
@@ -361,42 +311,51 @@ export default function SistemaAlvara() {
   }, [])
 
   // Update alvara handler
-  const handleUpdateAlvara = useCallback(() => {
+  const handleUpdateAlvara = useCallback(async () => {
     if (!selectedAlvara) return
     
-    const updatedAlvara: Alvara = {
-      ...selectedAlvara,
-      empresa: formData.empresa,
-      cnpj: formData.cnpj,
-      tipo: formData.tipo,
-      numeroProtocolo: formData.numeroProtocolo,
-      dataEmissao: new Date(formData.dataEmissao),
-      dataVencimento: new Date(formData.dataVencimento),
-      observacoes: formData.observacoes,
-      responsavel: formData.responsavel,
-      contato: formData.contato
+    try {
+      const updatedData = {
+        empresa: formData.empresa,
+        cnpj: formData.cnpj,
+        tipo: formData.tipo,
+        numeroProtocolo: formData.numeroProtocolo,
+        dataEmissao: new Date(formData.dataEmissao),
+        dataVencimento: new Date(formData.dataVencimento),
+        observacoes: formData.observacoes,
+        responsavel: formData.responsavel,
+        contato: formData.contato
+      }
+
+      await updateAlvara(selectedAlvara.id, updatedData)
+      
+      setFormData({
+        empresa: '',
+        cnpj: '',
+        tipo: 'vigilancia_sanitaria',
+        numeroProtocolo: '',
+        dataEmissao: '',
+        dataVencimento: '',
+        observacoes: '',
+        responsavel: '',
+        contato: ''
+      })
+      setShowEditDialog(false)
+      setSelectedAlvara(null)
+      
+      toast({
+        title: "Alvará atualizado com sucesso!",
+        description: `Alvará da ${updatedData.empresa} foi atualizado no Supabase.`,
+      })
+    } catch (error) {
+      console.error('Erro ao atualizar alvará:', error)
+      toast({
+        title: "Erro ao atualizar alvará",
+        description: "Tente novamente.",
+        variant: "destructive"
+      })
     }
-    
-    setAlvaras(prev => prev.map(a => a.id === selectedAlvara.id ? updateAlvaraStatus(updatedAlvara) : a))
-    setFormData({
-      empresa: '',
-      cnpj: '',
-      tipo: 'vigilancia_sanitaria',
-      numeroProtocolo: '',
-      dataEmissao: '',
-      dataVencimento: '',
-      observacoes: '',
-      responsavel: '',
-      contato: ''
-    })
-    setShowEditDialog(false)
-    setSelectedAlvara(null)
-    
-    toast({
-      title: "Alvará atualizado com sucesso!",
-      description: `Alvará da ${updatedAlvara.empresa} foi atualizado.`,
-    })
-  }, [formData, selectedAlvara, updateAlvaraStatus, toast])
+  }, [formData, selectedAlvara, updateAlvara, toast])
 
   // Export handler
   const handleExport = useCallback(() => {
@@ -703,6 +662,52 @@ export default function SistemaAlvara() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Loading indicator */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-2 text-slate-600">Carregando dados do Supabase...</span>
+          </div>
+        )}
+
+        {/* Error message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600 font-medium">Erro ao carregar dados: {error}</p>
+            {error.includes('42P01') && (
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800 font-medium">📋 Configuração Necessária:</p>
+                <p className="text-blue-700 mt-2">
+                  A tabela do banco de dados precisa ser criada. Siga os passos:
+                </p>
+                <ol className="mt-3 text-blue-700 list-decimal list-inside space-y-1">
+                  <li>
+                    Acesse o painel do Supabase: 
+                    <a 
+                      href="https://supabase.com/dashboard/project/sctlaitmqghnoxiqmbiw/sql" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="ml-2 text-blue-600 underline hover:text-blue-800"
+                    >
+                      SQL Editor
+                    </a>
+                  </li>
+                  <li>Execute o script que está no arquivo <code className="bg-blue-100 px-1 rounded">supabase_schema.sql</code></li>
+                  <li>Atualize esta página após executar o script</li>
+                </ol>
+                <div className="mt-4">
+                  <Button 
+                    onClick={() => window.location.reload()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Tentar Novamente
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card className="bg-white shadow-lg border-0 border-l-4 border-l-blue-500 cursor-pointer hover:shadow-xl transition-all duration-300 hover:scale-105" onClick={() => handleStatCardClick('todos')}>
