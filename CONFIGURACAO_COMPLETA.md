@@ -1,163 +1,146 @@
-# ✅ Sistema de Alvarás - Configuração Completa
+# 🚀 Sistema de Alvarás - Configuração Completa Supabase
 
-## 🎯 **Novo Logotipo Implementado**
+## 📋 IMPORTANTE: EXECUTE O SCRIPT SQL PRIMEIRO!
 
-✅ **Logotipo atualizado** em todas as telas:
-- **Tela de login**: Logotipo maior (h-24) e centralizado
-- **Painel principal**: Logotipo em destaque no header (h-16)
-- **Fundo branco** para melhor contraste
-- **Header ajustado** para acomodar o logo maior (h-28)
+### 1. Acesse o Painel do Supabase
+🔗 **Link direto**: https://supabase.com/dashboard/project/sctlaitmqghnoxiqmbiw/sql
 
-## 🗄️ **Integração com Supabase**
+### 2. Execute o Script SQL
+Copie todo o conteúdo do arquivo `supabase_schema.sql` e execute no SQL Editor do Supabase.
 
-### **Arquivos Criados:**
-
-1. **`lib/supabase.ts`** - Configuração e serviços do Supabase
-2. **`hooks/useAlvaras.ts`** - Hook para gerenciar dados dos alvarás
-3. **`components/AlvaraWithSupabase.tsx`** - Componente com opção de alternar entre local e Supabase
-4. **`supabase_schema.sql`** - Script para criar a estrutura do banco
-5. **`.env.example`** - Exemplo de configuração das variáveis de ambiente
-6. **`SUPABASE_SETUP.md`** - Instruções detalhadas de configuração
-
-### **Passo a Passo para Configurar:**
-
-#### **1. Criar Projeto no Supabase**
-```bash
-# Acesse https://supabase.com
-# Crie um novo projeto
-# Anote a URL e API Key
+### 3. Credenciais Configuradas
+```
+Email: agassessoriacontrole@gmail.com
+Senha: Fx21701313@@##
 ```
 
-#### **2. Configurar Variáveis de Ambiente**
-```bash
-# Crie o arquivo .env.local
-NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-chave-anonima
+### 4. Variáveis de Ambiente (Já Configuradas)
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://sctlaitmqghnoxiqmbiw.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-#### **3. Executar Script SQL**
+## 🎯 Funcionalidades Implementadas
+
+### ✅ Gerenciamento Completo
+- **Cadastro**: Novos alvarás com validação
+- **Edição**: Modificar dados existentes
+- **Visualização**: Detalhes completos
+- **Exclusão**: Remover alvarás
+- **Busca**: Por empresa, CNPJ, protocolo
+- **Filtros**: Por tipo e status
+- **Exportação**: PDF completo
+
+### ✅ Dashboard Inteligente
+- **Estatísticas**: Contadores em tempo real
+- **Alertas**: Vencimentos próximos
+- **Status Automático**: 
+  - 🟢 Em Dia (>30 dias)
+  - 🟡 Vencendo (≤30 dias)
+  - 🔴 Vencido (atrasado)
+
+### ✅ Tipos de Alvará
+- 🛡️ Vigilância Sanitária
+- 🔥 Corpo de Bombeiros
+- 🏛️ Municipal
+
+## 🗄️ Estrutura do Banco (Supabase)
+
+### Tabela: `alvaras`
 ```sql
--- Copie o conteúdo de supabase_schema.sql
--- Cole no SQL Editor do Supabase
--- Execute o script
+id                UUID (PK)
+empresa           TEXT
+cnpj              TEXT
+tipo              TEXT (enum)
+numero_protocolo  TEXT
+data_emissao      DATE
+data_vencimento   DATE
+status            TEXT (auto-calculado)
+observacoes       TEXT
+responsavel       TEXT
+contato           TEXT
+created_at        TIMESTAMP
+updated_at        TIMESTAMP
 ```
 
-#### **4. Testar a Integração**
-```bash
-# Reinicie o servidor
-npm run dev
+## 🔧 Arquivos Principais
 
-# Faça login no sistema
-# Teste as operações CRUD
-```
+### Backend (Supabase)
+- `lib/supabase.ts` - Cliente configurado
+- `hooks/useAlvaras.ts` - CRUD operations
+- `supabase_schema.sql` - Script de criação
 
-## 🔧 **Funcionalidades Implementadas**
+### Frontend
+- `app/page.tsx` - Interface principal
+- `components/AlvaraWithSupabase.tsx` - Componente especializado
 
-### **Sistema Local (localStorage)**
-- ✅ Armazenamento local dos dados
-- ✅ Funciona offline
-- ✅ Dados mantidos no navegador
-- ✅ Ideal para testes e desenvolvimento
+## 🚀 Como Usar
 
-### **Sistema Supabase (Banco de Dados)**
-- ✅ Armazenamento em nuvem
-- ✅ Sincronização em tempo real
-- ✅ Backup automático
-- ✅ Acesso de múltiplos dispositivos
-- ✅ Autenticação segura
+### 1. Primeira Vez
+1. Execute o script SQL no Supabase
+2. Faça login com as credenciais
+3. Sistema carregará dados automaticamente
 
-### **Operações Disponíveis**
-- ✅ **Criar** alvarás
-- ✅ **Ler** alvarás (com filtros)
-- ✅ **Atualizar** alvarás
-- ✅ **Deletar** alvarás
-- ✅ **Exportar** PDF
-- ✅ **Pesquisar** e filtrar
-- ✅ **Estatísticas** em tempo real
+### 2. Operações Diárias
+- **Novo Alvará**: Botão "Novo Alvará"
+- **Buscar**: Campo de pesquisa
+- **Filtrar**: Dropdowns de tipo/status
+- **Exportar**: Botão "Exportar PDF"
 
-## 🎨 **Melhorias Visuais**
+### 3. Monitoramento
+- Cards no topo mostram estatísticas
+- Cores indicam urgência
+- Clique nos cards para filtrar
 
-### **Tela de Login**
-- ✅ Logotipo maior e mais visível
-- ✅ Fundo profissional com imagem de escritório
-- ✅ Identificação clara da empresa
-- ✅ Campos de entrada otimizados
+## 🎨 Design Implementado
 
-### **Painel Principal**
-- ✅ Header com logotipo em destaque
-- ✅ Cards interativos com animações
-- ✅ Layout responsivo
-- ✅ Cores corporativas consistentes
+### Visual
+- **Logo**: AG Assessoria integrado
+- **Cores**: Azul profissional + Verde/Amarelo/Vermelho para status
+- **Layout**: Responsivo e moderno
+- **Tipografia**: Hierarquia clara
 
-## 📊 **Estrutura do Banco de Dados**
+### UX
+- **Navegação**: Intuitiva e rápida
+- **Feedback**: Toasts informativos
+- **Loading**: Indicadores visuais
+- **Errors**: Mensagens claras
 
-```sql
-Table: alvaras
-├── id (UUID, Primary Key)
-├── empresa (TEXT)
-├── cnpj (TEXT)
-├── tipo (TEXT) - vigilancia_sanitaria, bombeiro, municipal
-├── numero_protocolo (TEXT)
-├── data_emissao (DATE)
-├── data_vencimento (DATE)
-├── observacoes (TEXT, opcional)
-├── responsavel (TEXT)
-├── contato (TEXT)
-├── created_at (TIMESTAMP)
-└── updated_at (TIMESTAMP)
-```
+## 🔒 Segurança
 
-## 🔒 **Segurança**
+### Supabase RLS
+- Row Level Security habilitado
+- Políticas configuradas
+- Acesso controlado
 
-- ✅ **Row Level Security (RLS)** habilitado
-- ✅ **Políticas de acesso** configuradas
-- ✅ **Autenticação** obrigatória
-- ✅ **Validação** de dados
-- ✅ **Logs** detalhados
+### Autenticação
+- Login obrigatório
+- Sessão persistente
+- Logout seguro
 
-## 📝 **Como Usar**
+## 📊 Relatórios
 
-### **Opção 1: Sistema Local (Atual)**
-1. Faça login com as credenciais existentes
-2. Use normalmente como antes
-3. Dados ficam no navegador
+### Exportação PDF
+- **Dados**: Todos os alvarás filtrados
+- **Formato**: Tabela organizada
+- **Informações**: Completas e legíveis
+- **Marca**: AG Assessoria
 
-### **Opção 2: Sistema Supabase (Novo)**
-1. Configure o Supabase seguindo o guia
-2. Atualize as variáveis de ambiente
-3. Use o componente `AlvaraWithSupabase`
-4. Escolha entre Local ou Supabase na tela de login
+## 🆘 Troubleshooting
 
-## 🚀 **Comandos Úteis**
+### Se aparecer erro de tabela não encontrada:
+1. Verifique se executou o script SQL
+2. Confirme no Supabase se a tabela existe
+3. Clique "Tentar Novamente" na tela de erro
 
-```bash
-# Instalar dependências
-npm install
+### Se não carregar dados:
+1. Verifique conexão com internet
+2. Veja console para erros
+3. Confirme credenciais do Supabase
 
-# Iniciar desenvolvimento
-npm run dev
+## 🎯 Pronto para Uso!
 
-# Verificar erros
-npm run build
-
-# Testar tipos
-npx tsc --noEmit
-```
-
-## 📞 **Suporte**
-
-Em caso de dúvidas na configuração:
-1. Verifique o arquivo `SUPABASE_SETUP.md`
-2. Consulte a documentação do Supabase
-3. Teste primeiro com o sistema local
-
-## 🎯 **Próximos Passos**
-
-1. **Configure o Supabase** seguindo o guia
-2. **Teste a integração** com dados de exemplo
-3. **Migre os dados** existentes se necessário
-4. **Implemente backup** automático
-5. **Configure monitoramento** de uso
+O sistema está completamente configurado e pronto para uso em produção. Todos os dados são salvos no Supabase e sincronizados em tempo real.
 
 ---
 
