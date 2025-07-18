@@ -1,3 +1,6 @@
+-- Script SQL para Supabase - Versão com Drop Triggers
+-- Este script pode ser executado múltiplas vezes sem erros
+
 -- Criação da tabela de alvarás
 CREATE TABLE IF NOT EXISTS alvaras (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -30,7 +33,8 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Trigger para atualizar updated_at
+-- Remover trigger existente e criar novo
+DROP TRIGGER IF EXISTS update_alvaras_updated_at ON alvaras;
 CREATE TRIGGER update_alvaras_updated_at
   BEFORE UPDATE ON alvaras
   FOR EACH ROW
@@ -39,7 +43,8 @@ CREATE TRIGGER update_alvaras_updated_at
 -- Políticas de segurança (RLS)
 ALTER TABLE alvaras ENABLE ROW LEVEL SECURITY;
 
--- Política para permitir todas as operações para usuários autenticados
+-- Remover política existente e criar nova
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON alvaras;
 CREATE POLICY "Allow all operations for authenticated users" ON alvaras
   FOR ALL
   TO authenticated
@@ -224,43 +229,44 @@ CREATE INDEX IF NOT EXISTS idx_obrigacoes_tipo ON obrigacoes(tipo_obrigacao);
 -- TRIGGERS PARA UPDATED_AT
 -- ========================================
 
--- Triggers para clientes
+-- Remover todos os triggers existentes e criar novos
+DROP TRIGGER IF EXISTS update_clientes_updated_at ON clientes;
 CREATE TRIGGER update_clientes_updated_at
   BEFORE UPDATE ON clientes
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para responsáveis
+DROP TRIGGER IF EXISTS update_responsaveis_updated_at ON responsaveis;
 CREATE TRIGGER update_responsaveis_updated_at
   BEFORE UPDATE ON responsaveis
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para responsavel_cliente
+DROP TRIGGER IF EXISTS update_responsavel_cliente_updated_at ON responsavel_cliente;
 CREATE TRIGGER update_responsavel_cliente_updated_at
   BEFORE UPDATE ON responsavel_cliente
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para usuários
+DROP TRIGGER IF EXISTS update_usuarios_updated_at ON usuarios;
 CREATE TRIGGER update_usuarios_updated_at
   BEFORE UPDATE ON usuarios
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para empresas
+DROP TRIGGER IF EXISTS update_empresas_updated_at ON empresas;
 CREATE TRIGGER update_empresas_updated_at
   BEFORE UPDATE ON empresas
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para documentos
+DROP TRIGGER IF EXISTS update_documentos_updated_at ON documentos;
 CREATE TRIGGER update_documentos_updated_at
   BEFORE UPDATE ON documentos
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para obrigações
+DROP TRIGGER IF EXISTS update_obrigacoes_updated_at ON obrigacoes;
 CREATE TRIGGER update_obrigacoes_updated_at
   BEFORE UPDATE ON obrigacoes
   FOR EACH ROW
@@ -279,49 +285,50 @@ ALTER TABLE empresas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documentos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE obrigacoes ENABLE ROW LEVEL SECURITY;
 
--- Políticas para clientes
+-- Remover políticas existentes e criar novas
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON clientes;
 CREATE POLICY "Allow all operations for authenticated users" ON clientes
   FOR ALL
   TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Políticas para responsáveis
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON responsaveis;
 CREATE POLICY "Allow all operations for authenticated users" ON responsaveis
   FOR ALL
   TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Políticas para responsavel_cliente
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON responsavel_cliente;
 CREATE POLICY "Allow all operations for authenticated users" ON responsavel_cliente
   FOR ALL
   TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Políticas para usuários
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON usuarios;
 CREATE POLICY "Allow all operations for authenticated users" ON usuarios
   FOR ALL
   TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Políticas para empresas
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON empresas;
 CREATE POLICY "Allow all operations for authenticated users" ON empresas
   FOR ALL
   TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Políticas para documentos
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON documentos;
 CREATE POLICY "Allow all operations for authenticated users" ON documentos
   FOR ALL
   TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Políticas para obrigações
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON obrigacoes;
 CREATE POLICY "Allow all operations for authenticated users" ON obrigacoes
   FOR ALL
   TO authenticated
