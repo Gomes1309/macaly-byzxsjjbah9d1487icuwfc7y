@@ -4,18 +4,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { format, addDays, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Toaster } from '@/components/ui/toaster'
 import { useToast } from '@/hooks/use-toast'
 import { Switch } from '@/components/ui/switch'
 import { useAlvaras } from '@/hooks/useAlvaras'
-import { AuthService } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 
@@ -37,7 +36,8 @@ import {
   Lock,
   User,
   Database,
-  HardDrive
+  HardDrive,
+  Calendar
 } from 'lucide-react'
 
 interface Alvara {
@@ -180,7 +180,13 @@ export default function AlvaraWithSupabase() {
     
     if (useSupabase) {
       try {
-        await AuthService.signIn(loginData.email, loginData.password)
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: loginData.email,
+          password: loginData.password
+        })
+        
+        if (error) throw error
+        
         setIsAuthenticated(true)
         localStorage.setItem('auth_token', 'authenticated')
         
@@ -188,8 +194,8 @@ export default function AlvaraWithSupabase() {
           title: "Login realizado com sucesso!",
           description: "Bem-vindo ao sistema de controle de alvarás.",
         })
-      } catch (error) {
-        setLoginError('Erro na autenticação com Supabase')
+      } catch (error: any) {
+        setLoginError(error.message || 'Erro na autenticação com Supabase')
       }
     } else {
       if (loginData.email === VALID_CREDENTIALS.email && loginData.password === VALID_CREDENTIALS.password) {
@@ -210,7 +216,7 @@ export default function AlvaraWithSupabase() {
   const handleLogout = useCallback(async () => {
     if (useSupabase) {
       try {
-        await AuthService.signOut()
+        await supabase.auth.signOut()
       } catch (error) {
         console.error('Erro no logout:', error)
       }
