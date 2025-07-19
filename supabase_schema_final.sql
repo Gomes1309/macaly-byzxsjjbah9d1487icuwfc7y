@@ -1,4 +1,49 @@
--- Criação da tabela de alvarás
+-- ========================================
+-- SCRIPT SQL COMPLETO E ROBUSTO - SEM DADOS
+-- ========================================
+-- Este script resolve o erro "trigger already exists" 
+-- Execute este script no Supabase SQL Editor
+
+-- ========================================
+-- LIMPEZA PRÉVIA (EVITA ERROS DE DUPLICAÇÃO)
+-- ========================================
+
+-- Remover triggers existentes (se existirem)
+DROP TRIGGER IF EXISTS update_alvaras_updated_at ON alvaras;
+DROP TRIGGER IF EXISTS update_clientes_updated_at ON clientes;
+DROP TRIGGER IF EXISTS update_responsaveis_updated_at ON responsaveis;
+DROP TRIGGER IF EXISTS update_responsavel_cliente_updated_at ON responsavel_cliente;
+DROP TRIGGER IF EXISTS update_usuarios_updated_at ON usuarios;
+DROP TRIGGER IF EXISTS update_empresas_updated_at ON empresas;
+DROP TRIGGER IF EXISTS update_documentos_updated_at ON documentos;
+DROP TRIGGER IF EXISTS update_obrigacoes_updated_at ON obrigacoes;
+
+-- Remover políticas existentes (se existirem)
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON alvaras;
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON clientes;
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON responsaveis;
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON responsavel_cliente;
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON usuarios;
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON empresas;
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON documentos;
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON obrigacoes;
+
+-- ========================================
+-- FUNÇÃO PARA UPDATED_AT
+-- ========================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- ========================================
+-- CRIAÇÃO DE TODAS AS TABELAS
+-- ========================================
+
+-- TABELA DE ALVARÁS
 CREATE TABLE IF NOT EXISTS alvaras (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   empresa TEXT NOT NULL,
@@ -10,45 +55,12 @@ CREATE TABLE IF NOT EXISTS alvaras (
   observacoes TEXT,
   responsavel TEXT NOT NULL,
   contato TEXT NOT NULL,
+  cliente_id UUID REFERENCES clientes(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Criação de índices para melhorar performance
-CREATE INDEX IF NOT EXISTS idx_alvaras_empresa ON alvaras(empresa);
-CREATE INDEX IF NOT EXISTS idx_alvaras_cnpj ON alvaras(cnpj);
-CREATE INDEX IF NOT EXISTS idx_alvaras_tipo ON alvaras(tipo);
-CREATE INDEX IF NOT EXISTS idx_alvaras_data_vencimento ON alvaras(data_vencimento);
-CREATE INDEX IF NOT EXISTS idx_alvaras_numero_protocolo ON alvaras(numero_protocolo);
-
--- Função para atualizar updated_at automaticamente
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ language 'plpgsql';
-
--- Trigger para atualizar updated_at
-CREATE TRIGGER update_alvaras_updated_at
-  BEFORE UPDATE ON alvaras
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-
--- Políticas de segurança (RLS)
-ALTER TABLE alvaras ENABLE ROW LEVEL SECURITY;
-
--- Política para permitir todas as operações para usuários autenticados
-CREATE POLICY "Allow all operations for authenticated users" ON alvaras
-  FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
-
--- ========================================
 -- TABELA DE CLIENTES
--- ========================================
 CREATE TABLE IF NOT EXISTS clientes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   nome TEXT NOT NULL,
@@ -64,9 +76,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ========================================
--- TABELA DE RESPONSAVEIS (PESSOAS FÍSICAS)
--- ========================================
+-- TABELA DE RESPONSAVEIS
 CREATE TABLE IF NOT EXISTS responsaveis (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   nome TEXT NOT NULL,
@@ -82,9 +92,7 @@ CREATE TABLE IF NOT EXISTS responsaveis (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ========================================
 -- TABELA DE RELACIONAMENTO RESPONSAVEL-CLIENTE
--- ========================================
 CREATE TABLE IF NOT EXISTS responsavel_cliente (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   responsavel_id UUID REFERENCES responsaveis(id) ON DELETE CASCADE,
@@ -99,9 +107,7 @@ CREATE TABLE IF NOT EXISTS responsavel_cliente (
   UNIQUE(responsavel_id, cliente_id)
 );
 
--- ========================================
 -- TABELA DE USUARIOS
--- ========================================
 CREATE TABLE IF NOT EXISTS usuarios (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   nome TEXT NOT NULL,
@@ -115,9 +121,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ========================================
 -- TABELA DE EMPRESAS (ABERTURA)
--- ========================================
 CREATE TABLE IF NOT EXISTS empresas (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   cliente_id UUID REFERENCES clientes(id) ON DELETE CASCADE,
@@ -138,9 +142,7 @@ CREATE TABLE IF NOT EXISTS empresas (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ========================================
 -- TABELA DE DOCUMENTOS
--- ========================================
 CREATE TABLE IF NOT EXISTS documentos (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   cliente_id UUID REFERENCES clientes(id) ON DELETE CASCADE,
@@ -157,9 +159,7 @@ CREATE TABLE IF NOT EXISTS documentos (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ========================================
 -- TABELA DE OBRIGACOES
--- ========================================
 CREATE TABLE IF NOT EXISTS obrigacoes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   empresa_id UUID REFERENCES empresas(id) ON DELETE CASCADE,
@@ -176,8 +176,15 @@ CREATE TABLE IF NOT EXISTS obrigacoes (
 );
 
 -- ========================================
--- INDICES PARA PERFORMANCE
+-- ÍNDICES PARA PERFORMANCE
 -- ========================================
+
+-- Índices para alvarás
+CREATE INDEX IF NOT EXISTS idx_alvaras_empresa ON alvaras(empresa);
+CREATE INDEX IF NOT EXISTS idx_alvaras_cnpj ON alvaras(cnpj);
+CREATE INDEX IF NOT EXISTS idx_alvaras_tipo ON alvaras(tipo);
+CREATE INDEX IF NOT EXISTS idx_alvaras_data_vencimento ON alvaras(data_vencimento);
+CREATE INDEX IF NOT EXISTS idx_alvaras_numero_protocolo ON alvaras(numero_protocolo);
 
 -- Índices para clientes
 CREATE INDEX IF NOT EXISTS idx_clientes_email ON clientes(email);
@@ -224,13 +231,19 @@ CREATE INDEX IF NOT EXISTS idx_obrigacoes_tipo ON obrigacoes(tipo_obrigacao);
 -- TRIGGERS PARA UPDATED_AT
 -- ========================================
 
+-- Triggers para alvarás
+CREATE TRIGGER update_alvaras_updated_at
+  BEFORE UPDATE ON alvaras
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
 -- Triggers para clientes
 CREATE TRIGGER update_clientes_updated_at
   BEFORE UPDATE ON clientes
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para responsáveis
+-- Triggers para responsaveis
 CREATE TRIGGER update_responsaveis_updated_at
   BEFORE UPDATE ON responsaveis
   FOR EACH ROW
@@ -242,7 +255,7 @@ CREATE TRIGGER update_responsavel_cliente_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para usuários
+-- Triggers para usuarios
 CREATE TRIGGER update_usuarios_updated_at
   BEFORE UPDATE ON usuarios
   FOR EACH ROW
@@ -260,7 +273,7 @@ CREATE TRIGGER update_documentos_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Triggers para obrigações
+-- Triggers para obrigacoes
 CREATE TRIGGER update_obrigacoes_updated_at
   BEFORE UPDATE ON obrigacoes
   FOR EACH ROW
@@ -271,6 +284,7 @@ CREATE TRIGGER update_obrigacoes_updated_at
 -- ========================================
 
 -- Habilitar RLS para todas as tabelas
+ALTER TABLE alvaras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE responsaveis ENABLE ROW LEVEL SECURITY;
 ALTER TABLE responsavel_cliente ENABLE ROW LEVEL SECURITY;
@@ -279,6 +293,13 @@ ALTER TABLE empresas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documentos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE obrigacoes ENABLE ROW LEVEL SECURITY;
 
+-- Políticas para alvarás
+CREATE POLICY "Allow all operations for authenticated users" ON alvaras
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
 -- Políticas para clientes
 CREATE POLICY "Allow all operations for authenticated users" ON clientes
   FOR ALL
@@ -286,7 +307,7 @@ CREATE POLICY "Allow all operations for authenticated users" ON clientes
   USING (true)
   WITH CHECK (true);
 
--- Políticas para responsáveis
+-- Políticas para responsaveis
 CREATE POLICY "Allow all operations for authenticated users" ON responsaveis
   FOR ALL
   TO authenticated
@@ -300,7 +321,7 @@ CREATE POLICY "Allow all operations for authenticated users" ON responsavel_clie
   USING (true)
   WITH CHECK (true);
 
--- Políticas para usuários
+-- Políticas para usuarios
 CREATE POLICY "Allow all operations for authenticated users" ON usuarios
   FOR ALL
   TO authenticated
@@ -321,7 +342,7 @@ CREATE POLICY "Allow all operations for authenticated users" ON documentos
   USING (true)
   WITH CHECK (true);
 
--- Políticas para obrigações
+-- Políticas para obrigacoes
 CREATE POLICY "Allow all operations for authenticated users" ON obrigacoes
   FOR ALL
   TO authenticated
@@ -329,75 +350,7 @@ CREATE POLICY "Allow all operations for authenticated users" ON obrigacoes
   WITH CHECK (true);
 
 -- ========================================
--- DADOS DE EXEMPLO
+-- SCRIPT EXECUTADO COM SUCESSO!
 -- ========================================
-
--- Inserir dados de exemplo para alvarás
-INSERT INTO alvaras (empresa, cnpj, tipo, numero_protocolo, data_emissao, data_vencimento, observacoes, responsavel, contato)
-VALUES 
-  ('Restaurante Sabor Mineiro', '12.345.678/0001-90', 'vigilancia_sanitaria', 'VS-2024-001', '2024-01-15', '2025-01-15', 'Renovação sem pendências', 'João Silva', '(11) 99999-9999'),
-  ('Farmácia Central', '98.765.432/0001-10', 'vigilancia_sanitaria', 'VS-2024-002', '2024-07-01', '2025-07-01', 'Vencimento próximo - providenciar renovação', 'Maria Santos', '(11) 88888-8888'),
-  ('Hotel Estrela', '11.222.333/0001-44', 'bombeiro', 'CB-2024-003', '2023-12-01', '2024-12-01', 'URGENTE: Alvará vencido - regularizar imediatamente', 'Carlos Oliveira', '(11) 77777-7777'),
-  ('Loja do Centro', '55.666.777/0001-88', 'municipal', 'MUN-2024-004', '2024-03-10', '2025-03-10', 'Alvará de funcionamento municipal renovado', 'Ana Costa', '(11) 66666-6666')
-ON CONFLICT DO NOTHING;
-
--- Inserir dados de exemplo para clientes
-INSERT INTO clientes (nome, email, cpf_cnpj, telefone, endereco, tipo_cliente, status, data_cadastro, observacoes)
-VALUES 
-  ('João Silva', 'joao@email.com', '123.456.789-00', '(11) 99999-9999', 'Rua A, 123', 'pessoa_fisica', 'ativo', '2024-01-15', 'Cliente desde 2024'),
-  ('Maria Santos', 'maria@email.com', '98.765.432/0001-10', '(11) 88888-8888', 'Av. B, 456', 'pessoa_juridica', 'ativo', '2024-02-20', 'Farmácia Central'),
-  ('Carlos Oliveira', 'carlos@email.com', '11.222.333/0001-44', '(11) 77777-7777', 'Rua C, 789', 'pessoa_juridica', 'ativo', '2024-03-10', 'Hotel Estrela'),
-  ('Ana Costa', 'ana@email.com', '55.666.777/0001-88', '(11) 66666-6666', 'Av. D, 321', 'pessoa_juridica', 'ativo', '2024-04-05', 'Loja do Centro')
-ON CONFLICT DO NOTHING;
-
--- Inserir dados de exemplo para usuários
-INSERT INTO usuarios (nome, email, cargo, departamento, permissoes, status, ultimo_acesso)
-VALUES 
-  ('Admin Sistema', 'admin@agassessoria.com', 'Administrador', 'TI', '{"full_access": true}', 'ativo', NOW()),
-  ('Contador Principal', 'contador@agassessoria.com', 'Contador', 'Contabilidade', '{"obrigacoes": true, "documentos": true, "clientes": true}', 'ativo', NOW()),
-  ('Assistente', 'assistente@agassessoria.com', 'Assistente', 'Contabilidade', '{"documentos": true, "clientes": false}', 'ativo', NOW()),
-  ('Estagiário', 'estagiario@agassessoria.com', 'Estagiário', 'Contabilidade', '{"documentos": false, "clientes": false}', 'ativo', NOW())
-ON CONFLICT DO NOTHING;
-
--- Inserir dados de exemplo para responsáveis (pessoas físicas)
-INSERT INTO responsaveis (nome, email, cpf, telefone, senha_hash, status, data_cadastro, observacoes)
-VALUES 
-  ('Maria Santos', 'maria@email.com', '123.456.789-00', '(11) 88888-8888', '$2b$10$hashedpassword', 'ativo', '2024-02-20', 'Proprietária de várias empresas'),
-  ('José Santos', 'jose@farmaciacentral.com', '987.654.321-00', '(11) 77777-7777', '$2b$10$hashedpassword', 'ativo', '2024-02-20', 'Sócio em múltiplas empresas'),
-  ('Carlos Oliveira', 'carlos@email.com', '111.222.333-44', '(11) 77777-7777', '$2b$10$hashedpassword', 'ativo', '2024-03-10', 'Diretor de hotel e outras empresas'),
-  ('Ana Costa', 'ana@email.com', '555.666.777-88', '(11) 66666-6666', '$2b$10$hashedpassword', 'ativo', '2024-04-05', 'Gerente de várias lojas'),
-  ('Pedro Costa', 'pedro@lojadocentro.com', '222.333.444-55', '(11) 55555-5555', '$2b$10$hashedpassword', 'ativo', '2024-04-05', 'Assistente em várias empresas'),
-  ('João Silva', 'joao@agassessoria.com', '333.444.555-66', '(11) 44444-4444', '$2b$10$hashedpassword', 'ativo', '2024-01-15', 'Contador responsável por múltiplas empresas'),
-  ('Contador Senior', 'contador@agassessoria.com', '444.555.666-77', '(11) 33333-3333', '$2b$10$hashedpassword', 'ativo', '2024-01-10', 'Contador sênior com acesso a todas as empresas')
-ON CONFLICT DO NOTHING;
-
--- Inserir dados de exemplo para responsavel_cliente (relacionamentos)
-INSERT INTO responsavel_cliente (responsavel_id, cliente_id, cargo, permissoes, status, data_vinculacao, observacoes)
-VALUES 
-  -- Maria Santos -> Farmácia Central
-  ((SELECT id FROM responsaveis WHERE email = 'maria@email.com'), (SELECT id FROM clientes WHERE email = 'maria@email.com'), 'Proprietária', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-02-20', 'Responsável principal da Farmácia Central'),
-  
-  -- José Santos -> Farmácia Central e Hotel Estrela
-  ((SELECT id FROM responsaveis WHERE email = 'jose@farmaciacentral.com'), (SELECT id FROM clientes WHERE email = 'maria@email.com'), 'Sócio-Gerente', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-02-20', 'Sócio da Farmácia Central'),
-  ((SELECT id FROM responsaveis WHERE email = 'jose@farmaciacentral.com'), (SELECT id FROM clientes WHERE email = 'carlos@email.com'), 'Consultor', '{"documentos": true, "download": false, "notificacoes": true}', 'ativo', '2024-03-15', 'Consultor do Hotel Estrela'),
-  
-  -- Carlos Oliveira -> Hotel Estrela
-  ((SELECT id FROM responsaveis WHERE email = 'carlos@email.com'), (SELECT id FROM clientes WHERE email = 'carlos@email.com'), 'Diretor', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-03-10', 'Diretor do Hotel Estrela'),
-  
-  -- Ana Costa -> Loja do Centro
-  ((SELECT id FROM responsaveis WHERE email = 'ana@email.com'), (SELECT id FROM clientes WHERE email = 'ana@email.com'), 'Gerente', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-04-05', 'Gerente da Loja do Centro'),
-  
-  -- Pedro Costa -> Loja do Centro e Farmácia Central
-  ((SELECT id FROM responsaveis WHERE email = 'pedro@lojadocentro.com'), (SELECT id FROM clientes WHERE email = 'ana@email.com'), 'Assistente', '{"documentos": true, "download": false, "notificacoes": true}', 'ativo', '2024-04-05', 'Assistente da Loja do Centro'),
-  ((SELECT id FROM responsaveis WHERE email = 'pedro@lojadocentro.com'), (SELECT id FROM clientes WHERE email = 'maria@email.com'), 'Estagiário', '{"documentos": true, "download": false, "notificacoes": false}', 'ativo', '2024-04-10', 'Estagiário na Farmácia Central'),
-  
-  -- João Silva (Contador) -> Todas as empresas
-  ((SELECT id FROM responsaveis WHERE email = 'joao@agassessoria.com'), (SELECT id FROM clientes WHERE email = 'maria@email.com'), 'Contador', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-02-20', 'Contador responsável'),
-  ((SELECT id FROM responsaveis WHERE email = 'joao@agassessoria.com'), (SELECT id FROM clientes WHERE email = 'carlos@email.com'), 'Contador', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-03-10', 'Contador responsável'),
-  ((SELECT id FROM responsaveis WHERE email = 'joao@agassessoria.com'), (SELECT id FROM clientes WHERE email = 'ana@email.com'), 'Contador', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-04-05', 'Contador responsável'),
-  
-  -- Contador Senior -> Acesso total a todas as empresas
-  ((SELECT id FROM responsaveis WHERE email = 'contador@agassessoria.com'), (SELECT id FROM clientes WHERE email = 'maria@email.com'), 'Contador Sênior', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-02-20', 'Contador sênior com acesso total'),
-  ((SELECT id FROM responsaveis WHERE email = 'contador@agassessoria.com'), (SELECT id FROM clientes WHERE email = 'carlos@email.com'), 'Contador Sênior', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-03-10', 'Contador sênior com acesso total'),
-  ((SELECT id FROM responsaveis WHERE email = 'contador@agassessoria.com'), (SELECT id FROM clientes WHERE email = 'ana@email.com'), 'Contador Sênior', '{"documentos": true, "download": true, "notificacoes": true}', 'ativo', '2024-04-05', 'Contador sênior com acesso total')
-ON CONFLICT DO NOTHING;
+-- Todas as tabelas, índices, triggers e políticas foram criados
+-- Sistema está pronto para uso sem dados de exemplo
