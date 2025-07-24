@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { AlvaraService, DatabaseAlvara } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { differenceInDays } from 'date-fns'
 
 export interface Alvara {
   id: string
+  clienteId?: string
   empresa: string
   cnpj: string
   tipo: 'vigilancia_sanitaria' | 'bombeiro' | 'municipal'
@@ -16,10 +17,28 @@ export interface Alvara {
   contato: string
 }
 
+interface DatabaseAlvara {
+  id: string
+  cliente_id?: string
+  empresa: string
+  cnpj: string
+  tipo: 'vigilancia_sanitaria' | 'bombeiro' | 'municipal'
+  numero_protocolo: string
+  data_emissao: string
+  data_vencimento: string
+  observacoes?: string
+  responsavel: string
+  contato: string
+  created_at?: string
+  updated_at?: string
+}
+
 export function useAlvaras() {
   const [alvaras, setAlvaras] = useState<Alvara[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  console.log('useAlvaras: Hook iniciado')
 
   // Converter dados do banco para formato da aplicação
   const databaseToAlvara = useCallback((dbAlvara: DatabaseAlvara): Alvara => {
@@ -41,6 +60,7 @@ export function useAlvaras() {
 
     return {
       id: dbAlvara.id,
+      clienteId: dbAlvara.cliente_id,
       empresa: dbAlvara.empresa,
       cnpj: dbAlvara.cnpj,
       tipo: dbAlvara.tipo,
@@ -57,6 +77,7 @@ export function useAlvaras() {
   // Converter dados da aplicação para formato do banco
   const alvaraToDatabase = useCallback((alvara: Omit<Alvara, 'id' | 'status'>): Omit<DatabaseAlvara, 'id' | 'created_at' | 'updated_at'> => {
     return {
+      cliente_id: alvara.clienteId,
       empresa: alvara.empresa,
       cnpj: alvara.cnpj,
       tipo: alvara.tipo,
@@ -69,39 +90,120 @@ export function useAlvaras() {
     }
   }, [])
 
+  // Função para retry com exponential backoff
+  const retryWithBackoff = useCallback(async (fn: () => Promise<any>, maxRetries = 3, initialDelay = 1000) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn()
+      } catch (error: any) {
+        console.log(`useAlvaras: Tentativa ${attempt}/${maxRetries} falhou:`, error?.message || error)
+        
+        if (attempt === maxRetries) {
+          throw error
+        }
+        
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = initialDelay * Math.pow(2, attempt - 1)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }, [])
+
   // Carregar alvarás do banco
   const loadAlvaras = useCallback(async () => {
     try {
+      console.log('useAlvaras: Iniciando carregamento dos alvarás...')
       setLoading(true)
       setError(null)
       
-      const dbAlvaras = await AlvaraService.getAll()
-      const formattedAlvaras = dbAlvaras.map(databaseToAlvara)
+      const result = await retryWithBackoff(async () => {
+        const { data, error: supabaseError } = await supabase
+          .from('alvaras')
+          .select('*')
+          .order('created_at', { ascending: false })
+        
+        if (supabaseError) {
+          console.error('useAlvaras: Erro do Supabase:', supabaseError)
+          throw new Error(`Supabase Error: ${supabaseError.message}`)
+        }
+        
+        return data
+      })
+
+      // Tratar tanto dados vazios quanto nulos como casos válidos
+      const alvarasData = result || []
+      console.log(`✅ ${alvarasData.length} alvarás carregados do Supabase`)
       
+      const formattedAlvaras = alvarasData.map(databaseToAlvara)
       setAlvaras(formattedAlvaras)
-    } catch (err) {
-      console.error('Erro ao carregar alvarás:', err)
-      setError('Erro ao carregar alvarás')
+      
+      // Backup local
+      localStorage.setItem('alvaras_backup', JSON.stringify(formattedAlvaras))
+      
+    } catch (err: any) {
+      console.error('useAlvaras: Erro ao carregar alvarás:', {
+        message: err?.message || 'Unknown error',
+        details: err?.details || '',
+        hint: err?.hint || '',
+        code: err?.code || ''
+      })
+      
+      // Tentar fallback para localStorage
+      try {
+        const backupData = localStorage.getItem('alvaras_backup')
+        if (backupData) {
+          const alvarasBackup = JSON.parse(backupData).map((alvara: any) => ({
+            ...alvara,
+            dataEmissao: new Date(alvara.dataEmissao),
+            dataVencimento: new Date(alvara.dataVencimento)
+          }))
+          setAlvaras(alvarasBackup)
+          console.log(`✅ ${alvarasBackup.length} alvarás carregados do backup local`)
+          setError('Usando dados locais (problemas de conectividade)')
+        } else {
+          setAlvaras([])
+          setError('Problemas de conectividade. Tentando reconectar...')
+        }
+      } catch (backupError) {
+        setAlvaras([])
+        setError('Erro ao carregar dados. Recarregue a página.')
+      }
     } finally {
       setLoading(false)
     }
-  }, [databaseToAlvara])
+  }, [databaseToAlvara, retryWithBackoff])
 
   // Adicionar novo alvará
   const addAlvara = useCallback(async (alvaraData: Omit<Alvara, 'id' | 'status'>) => {
     try {
+      console.log('useAlvaras: Adicionando novo alvará:', alvaraData)
       setError(null)
       
       const dbData = alvaraToDatabase(alvaraData)
-      const newDbAlvara = await AlvaraService.create(dbData)
-      const newAlvara = databaseToAlvara(newDbAlvara)
+      console.log('useAlvaras: Dados para inserção:', dbData)
       
-      setAlvaras(prev => [newAlvara, ...prev])
+      const { data, error: supabaseError } = await supabase
+        .from('alvaras')
+        .insert([dbData])
+        .select()
+        .single()
       
-      return newAlvara
-    } catch (err) {
-      console.error('Erro ao adicionar alvará:', err)
-      setError('Erro ao adicionar alvará')
+      if (supabaseError) {
+        console.error('useAlvaras: Erro ao inserir:', supabaseError)
+        throw supabaseError
+      }
+      
+      console.log('useAlvaras: Alvará inserido:', data)
+      
+      if (data) {
+        const newAlvara = databaseToAlvara(data)
+        setAlvaras(prev => [newAlvara, ...prev])
+        console.log('useAlvaras: Alvará adicionado à lista:', newAlvara)
+        return newAlvara
+      }
+    } catch (err: any) {
+      console.error('useAlvaras: Erro ao adicionar alvará:', err)
+      setError(err.message || 'Erro ao adicionar alvará')
       throw err
     }
   }, [alvaraToDatabase, databaseToAlvara])
@@ -109,10 +211,12 @@ export function useAlvaras() {
   // Atualizar alvará existente
   const updateAlvara = useCallback(async (id: string, alvaraData: Partial<Omit<Alvara, 'id' | 'status'>>) => {
     try {
+      console.log('useAlvaras: Atualizando alvará:', id, alvaraData)
       setError(null)
       
       const updateData: Partial<DatabaseAlvara> = {}
       
+      if (alvaraData.clienteId !== undefined) updateData.cliente_id = alvaraData.clienteId
       if (alvaraData.empresa) updateData.empresa = alvaraData.empresa
       if (alvaraData.cnpj) updateData.cnpj = alvaraData.cnpj
       if (alvaraData.tipo) updateData.tipo = alvaraData.tipo
@@ -123,15 +227,29 @@ export function useAlvaras() {
       if (alvaraData.responsavel) updateData.responsavel = alvaraData.responsavel
       if (alvaraData.contato) updateData.contato = alvaraData.contato
       
-      const updatedDbAlvara = await AlvaraService.update(id, updateData)
-      const updatedAlvara = databaseToAlvara(updatedDbAlvara)
+      const { data, error: supabaseError } = await supabase
+        .from('alvaras')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single()
       
-      setAlvaras(prev => prev.map(alvara => alvara.id === id ? updatedAlvara : alvara))
+      if (supabaseError) {
+        console.error('useAlvaras: Erro ao atualizar:', supabaseError)
+        throw supabaseError
+      }
       
-      return updatedAlvara
-    } catch (err) {
-      console.error('Erro ao atualizar alvará:', err)
-      setError('Erro ao atualizar alvará')
+      console.log('useAlvaras: Alvará atualizado:', data)
+      
+      if (data) {
+        const updatedAlvara = databaseToAlvara(data)
+        setAlvaras(prev => prev.map(alvara => alvara.id === id ? updatedAlvara : alvara))
+        
+        return updatedAlvara
+      }
+    } catch (err: any) {
+      console.error('useAlvaras: Erro ao atualizar alvará:', err)
+      setError(err.message || 'Erro ao atualizar alvará')
       throw err
     }
   }, [databaseToAlvara])
@@ -139,13 +257,26 @@ export function useAlvaras() {
   // Deletar alvará
   const deleteAlvara = useCallback(async (id: string) => {
     try {
+      console.log('useAlvaras: Deletando alvará:', id)
       setError(null)
       
-      await AlvaraService.delete(id)
+      const { error: supabaseError } = await supabase
+        .from('alvaras')
+        .delete()
+        .eq('id', id)
+      
+      if (supabaseError) {
+        console.error('useAlvaras: Erro ao deletar:', supabaseError)
+        throw supabaseError
+      }
+      
+      console.log('useAlvaras: Alvará deletado com sucesso')
       setAlvaras(prev => prev.filter(alvara => alvara.id !== id))
-    } catch (err) {
-      console.error('Erro ao deletar alvará:', err)
-      setError('Erro ao deletar alvará')
+      
+      // Sync event removed - not implemented
+    } catch (err: any) {
+      console.error('useAlvaras: Erro ao deletar alvará:', err)
+      setError(err.message || 'Erro ao deletar alvará')
       throw err
     }
   }, [])
@@ -153,7 +284,17 @@ export function useAlvaras() {
   // Carregar dados na inicialização
   useEffect(() => {
     loadAlvaras()
-  }, [loadAlvaras])
+    
+    // Tentar reconectar automaticamente após 30 segundos se houver erro
+    const retryInterval = setInterval(async () => {
+      if (error && (error.includes('conectividade') || error.includes('reconectar'))) {
+        console.log('Tentando reconexão automática para alvarás...')
+        await loadAlvaras()
+      }
+    }, 30000)
+    
+    return () => clearInterval(retryInterval)
+  }, [loadAlvaras, error])
 
   return {
     alvaras,
