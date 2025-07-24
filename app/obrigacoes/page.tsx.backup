@@ -1,0 +1,322 @@
+"use client"
+
+import { useState, useEffect, useCallback } from 'react'
+import { format, addDays, isAfter, isBefore, differenceInDays, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth, isSameDay, parseISO } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Progress } from '@/components/ui/progress'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Separator } from '@/components/ui/separator'
+import { Toaster } from '@/components/ui/toaster'
+import { useToast } from '@/hooks/use-toast'
+import { useUsuarios } from '@/hooks/useUsuarios'
+import { useEmpresas } from '@/hooks/useEmpresas'
+
+const { toast } = useToast()
+
+// Adaptando para interface compatível com Supabase
+interface ObrigacaoFiscal {
+  id: string
+  codigo: string
+  nome: string
+  nomeObrigacao: string
+  descricao?: string
+  tipo: 'federal' | 'estadual' | 'municipal' | 'trabalhista' | 'previdenciaria'
+  tipoObrigacao: 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual' | 'eventual'
+  periodicidade: 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual' | 'conforme_movimento'
+  dataVencimento: Date
+  proximoVencimento?: Date
+  status: 'pendente' | 'cumprida' | 'atrasada' | 'cumprido' | 'vencido' | 'em_andamento' | 'isento'
+  prioridade: 'baixa' | 'media' | 'alta' | 'critica'
+  responsavel: string
+  dataCumprimento?: Date
+  usuarioCumprimento?: string
+  observacoes?: string
+  empresaId?: string
+  cliente?: string
+  categoria: 'declaracao' | 'pagamento' | 'informacao'
+  orgaoDestino: string
+  sistemaEnvio: string
+  recorrente: boolean
+  diasAlerta: number
+  alertaEnviado?: boolean
+  valorMulta?: number
+  diasAtraso?: number
+  empresasCumpridas?: EmpresaCumprida[]
+  documentos?: string[]
+}
+
+interface EmpresaCumprida {
+  id: string
+  nomeEmpresa: string
+  cnpj: string
+  dataCumprimento: Date
+  funcionarioResponsavel: string
+  observacoes?: string
+  valor?: number
+  protocolo?: string
+}
+
+interface CalendarDay {
+  date: Date
+  isCurrentMonth: boolean
+  obrigações: ObrigacaoFiscal[]
+}
+
+const VALID_CREDENTIALS = {
+  email: 'agassessoriacontrole@gmail.com',
+  password: 'Fx21701313@@##'
+}
+
+// Empty funcionarios array - will be loaded from localStorage or sample data
+const FUNCIONARIOS_EXEMPLO = [
+  'Carlos Silva - Contador',
+  'Maria Santos - Auxiliar Fiscal', 
+  'João Oliveira - Analista Tributário',
+  'Ana Costa - Assistente Contábil',
+  'Pedro Alves - Coordenador Fiscal'
+]
+
+const EMPRESAS_CLIENTES = [
+  { id: '1', nome: 'Tech Solutions Ltda', cnpj: '12.345.678/0001-90', tipo: 'Lucro Presumido' },
+  { id: '2', nome: 'Bella Estética MEI', cnpj: '98.765.432/0001-10', tipo: 'MEI' },
+  { id: '3', nome: 'Comércio Brasil S.A.', cnpj: '11.222.333/0001-44', tipo: 'Lucro Real' },
+  { id: '4', nome: 'Serviços Gerais Ltda', cnpj: '55.666.777/0001-88', tipo: 'S
+
+const OBRIGACOES_PADRAO: Omit<ObrigacaoFiscal, 'id' | 'dataVencimento' | 'proximoVencimento' | 'status' | 'alertaEnviado' | 'dataCumprimento' | 'usuarioCumprimento' | 'valorMulta' | 'diasAtraso' | 'empresasCumpridas' | 'documentos'>[] = [
+  {
+    codigo: 'DARF',
+    nome: 'DARF - Documento de Arrecadação de Receitas Federais',
+    descricao: 'Recolhimento de impostos federais (IRPJ, CSLL, PIS, COFINS, etc.)',
+    tipo: 'federal',
+    tipoObrigacao: 'mensal',
+    periodicidade: 'mensal',
+    prioridade: 'alta',
+    responsavel: 'Equipe Fiscal',
+    categoria: 'pagamento',
+    orgaoDestino: 'Receita Federal',
+    sistemaEnvio: 'e-CAC',
+    recorrente: true,
+    diasAlerta: 5,
+    documentos: ['Apuração dos impostos', 'DARF preenchido', 'Comprovante de pagamento']
+  },
+  {
+    codigo: 'GFIP',
+    nome: 'GFIP - Guia de Recolhimento do FGTS',
+    descricao: 'Informações à Previdência Social e recolhimento do FGTS',
+    tipo: 'trabalhista',
+    tipoObrigacao: 'mensal',
+    periodicidade: 'mensal',
+    prioridade: 'alta',
+    responsavel: 'Depto Pessoal',
+    categoria: 'informacao',
+    orgaoDestino: 'Caixa Econômica Federal',
+    sistemaEnvio: 'Conectividade Social',
+    recorrente: true,
+    diasAlerta: 7,
+    documentos: ['Folha de pagamento', 'GFIP', 'Comprovante de recolhimento']
+  },
+  {
+    codigo: 'DIRF',
+    nome: 'DIRF - Declaração do Imposto de Renda Retido na Fonte',
+    descricao: 'Declaração anual de valores retidos na fonte',
+    tipo: 'federal',
+    tipoObrigacao: 'anual',
+    periodicidade: 'anual',
+    prioridade: 'critica',
+    responsavel: 'Controller',
+    categoria: 'declaracao',
+    orgaoDestino: 'Receita Federal',
+    sistemaEnvio: 'PGD - DIRF',
+    recorrente: true,
+    diasAlerta: 15,
+    documentos: ['Relatório de retenções', 'DIRF', 'Recibo de entrega']
+  },
+  {
+    codigo: 'RAIS',
+    nome: 'RAIS - Relação Anual de Informações Sociais',
+    descricao: 'Informações anuais sobre empregados e vínculos trabalhistas',
+    tipo: 'trabalhista',
+    tipoObrigacao: 'anual',
+    periodicidade: 'anual',
+    prioridade: 'alta',
+    responsavel: 'Depto Pessoal',
+    categoria: 'informacao',
+    orgaoDestino: 'Ministério do Trabalho',
+    sistemaEnvio: 'RAIS Web',
+    recorrente: true,
+    diasAlerta: 20,
+    documentos: ['Dados dos empregados', 'RAIS', 'Protocolo de envio']
+  },
+  {
+    codigo: 'DCTF',
+    nome: 'DCTF - Declaração de Débitos e Créditos Tributários Federais',
+    descricao: 'Declaração mensal de débitos e créditos tributários',
+    tipo: 'federal',
+    tipoObrigacao: 'mensal',
+    periodicidade: 'mensal',
+    prioridade: 'alta',
+    responsavel: 'Equipe Fiscal',
+    categoria: 'declaracao',
+    orgaoDestino: 'Receita Federal',
+    sistemaEnvio: 'PGD - DCTF',
+    recorrente: true,
+    diasAlerta: 5,
+    documentos: ['Apuração tributária', 'DCTF', 'Recibo de entrega']
+  },
+  {
+    codigo: 'EFD-CONTRIB',
+    nome: 'EFD-Contribuições',
+    descricao: 'Escrituração Fiscal Digital das Contribuições PIS/PASEP e COFINS',
+    tipo: 'federal',
+    tipoObrigacao: 'mensal',
+    periodicidade: 'mensal',
+    prioridade: 'alta',
+    responsavel: 'Equipe Fiscal',
+    categoria: 'declaracao',
+    orgaoDestino: 'Receita Federal',
+    sistemaEnvio: 'PVA EFD-Contribuições',
+    recorrente: true,
+    diasAlerta: 7,
+    documentos: ['Escrituração contábil', 'EFD-Contribuições', 'Protocolo de envio']
+  },
+  {
+    codigo: 'EFD-ICMS',
+    nome: 'EFD-ICMS/IPI',
+    descricao: 'Escrituração Fiscal Digital do ICMS e IPI',
+    tipo: 'estadual',
+    tipoObrigacao: 'mensal',
+    periodicidade: 'mensal',
+    prioridade: 'alta',
+    responsavel: 'Equipe Fiscal',
+    categoria: 'declaracao',
+    orgaoDestino: 'Secretaria da Fazenda',
+    sistemaEnvio: 'PVA EFD-ICMS/IPI',
+    recorrente: true,
+    diasAlerta: 7,
+    documentos: ['Livros fiscais', 'EFD-ICMS/IPI', 'Protocolo de envio']
+  },
+  {
+    codigo: 'SPED-CONTABIL',
+    nome: 'SPED Contábil',
+    descricao: 'Escrituração Contábil Digital - ECD',
+    tipo: 'federal',
+    tipoObrigacao: 'anual',
+    periodicidade: 'anual',
+    prioridade: 'alta',
+    responsavel: 'Contador',
+    categoria: 'declaracao',
+    orgaoDestino: 'Receita Federal',
+    sistemaEnvio: 'PVA ECD',
+    recorrente: true,
+    diasAlerta: 30,
+    documentos: ['Escrituração contábil', 'ECD', 'Protocolo de envio']
+  },
+  {
+    codigo: 'DEFIS',
+    nome: 'DEFIS - Declaração de Informações Socioeconômicas e Fiscais',
+    descricao: 'Declaração anual para empresas do Simples Nacional',
+    tipo: 'federal',
+    tipoObrigacao: 'anual',
+    periodicidade: 'anual',
+    prioridade: 'alta',
+    responsavel: 'Contador',
+    categoria: 'declaracao',
+    orgaoDestino: 'Receita Federal',
+    sistemaEnvio: 'Portal do Simples Nacional',
+    recorrente: true,
+    diasAlerta: 15,
+    documentos: ['Relatórios contábeis', 'DEFIS', 'Protocolo de envio']
+  },
+  {
+    codigo: 'DASN',
+    nome: 'DASN - Declaração Anual do Simples Nacional',
+    descricao: 'Declaração anual para MEI',
+    tipo: 'federal',
+    tipoObrigacao: 'anual',
+    periodicidade: 'anual',
+    prioridade: 'media',
+    responsavel: 'Equipe MEI',
+    categoria: 'declaracao',
+    orgaoDestino: 'Receita Federal',
+    sistemaEnvio: 'Portal do Simples Nacional',
+    recorrente: true,
+    diasAlerta: 10,
+    documentos: ['Relatório de faturamento', 'DASN', 'Protocolo de envio']
+  },
+  {
+    codigo: 'DES',
+    nome: 'DES - Declaração Eletrônica de Serviços',
+    descricao: 'Declaração mensal de serviços prestados',
+    tipo: 'municipal',
+    tipoObrigacao: 'mensal',
+    periodicidade: 'mensal',
+    prioridade: 'media',
+    responsavel: 'Equipe Fiscal',
+    categoria: 'declaracao',
+    orgaoDestino: 'Prefeitura Municipal',
+    sistemaEnvio: 'Portal da Prefeitura',
+    recorrente: true,
+    diasAlerta: 5,
+    documentos: ['Notas fiscais de serviço', 'DES', 'Protocolo de envio']
+  },
+  {
+    codigo: 'DIPJ',
+    nome: 'DIPJ - Declaração de Informações Econômico-Fiscais',
+    descricao: 'Declaração anual de informações econômico-fiscais da pessoa jurídica',
+    tipo: 'federal',
+    tipoObrigacao: 'anual',
+    periodicidade: 'anual',
+    prioridade: 'critica',
+    responsavel: 'Controller',
+    categoria: 'declaracao',
+    orgaoDestino: 'Receita Federal',
+    sistemaEnvio: 'PGD - DIPJ',
+    recorrente: true,
+    diasAlerta: 20,
+    documentos: ['Demonstrações contábeis', 'DIPJ', 'Protocolo de envio']
+  }
+]
+
+export default function ObrigacoesFiscais() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [loginError, setLoginError] = useState('')
+  const [obrigacoes, setObrigacoes] = useState<ObrigacaoFiscal[]>([])
+  const [filteredObrigacoes, setFilteredObrigacoes] = useState<ObrigacaoFiscal[]>([])
+  const [funcionarios, setFuncionarios] = useState<string[]>([])
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('todas')
+  const [tipoFilter, setTipoFilter] = useState<string>('todos')
+  const [prioridadeFilter, setPrioridadeFilter] = useState<string>('todas')
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showViewDialog, setShowViewDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showEmpresasDialog, setShowEmpresasDialog] = useState(false)
+  const [selectedObligacao, setSelectedObrigacao] = useState<ObrigacaoFiscal | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('mensal')
+  const [expandedObrigacao, setExpandedObrigacao] = useState<string | null>(null)
+  const [calendarDate, setCalendarDate] = useState(new Date())
+  const [showReportDialog, setShowReportDialog] = useState(false)
+  const [reportType, setReportType] = useState<'mensal' | 'personalizado'>('mensal')
+  const [reportPeriod, setReportPeriod] = useState({
+    dataInicio: '',
+    dataFim: ''
+  })
+  const { toast } = useToast()
+  
+  // Initialize real users hook
+  const { usuarios, loading: usuariosLoading, error: usuariosError, refreshUsuarios } = useUsuarios()
+  
+  // Initialize real companies hook  
+  const { empresas, loading: empresasLoading, error: empresasError, refreshEmpresas } = useEmpresas()
