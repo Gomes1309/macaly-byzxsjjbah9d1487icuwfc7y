@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TESTE JAVASCRIPT PURO</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+        }
+        .btn-red { background-color: #dc2626; }
+        .btn-green { background-color: #16a34a; }
+        .btn-blue { background-color: #2563eb; }
+        .btn-purple { background-color: #7c3aed; }
+        button:hover { opacity: 0.8; }
+        h1 { color: #dc2626; text-align: center; }
+        p { text-align: center; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 TESTE JAVASCRIPT PURO</h1>
+        <p>Se esses botões não funcionarem, JavaScript está DESABILITADO!</p>
+        
+        <button class="btn-red" onclick="testeAlert()">
+            ✅ TESTE 1: Alert Simples
+        </button>
+        
+        <button class="btn-green" onclick="testeConsole()">
+            📝 TESTE 2: Console Log
+        </button>
+        
+        <button class="btn-blue" onclick="testeRedirect()">
+            🔄 TESTE 3: Redirect Dashboard  
+        </button>
+        
+        <button class="btn-purple" onclick="testeCompleto()">
+            🚀 TESTE 4: Função Complexa
+        </button>
+        
+        <div id="resultado" style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px; display: none;">
+            <strong>Resultado:</strong> <span id="texto-resultado"></span>
+        </div>
+    </div>
+
+    <script>
+        console.log('🟢 JavaScript carregado com sucesso!');
+        
+        function testeAlert() {
+            alert('✅ TESTE 1 FUNCIONOU! JavaScript está ativo!');
+        }
+        
+        function testeConsole() {
+            console.log('✅ TESTE 2 FUNCIONOU! Console log ativo!');
+            alert('✅ TESTE 2 OK! Verifique o console do navegador!');
+        }
+        
+        function testeRedirect() {
+            console.log('✅ TESTE 3: Redirecionando...');
+            alert('✅ TESTE 3: Redirecionando para dashboard...');
+            window.location.href = '/';
+        }
+        
+        function testeCompleto() {
+            console.log('✅ TESTE 4: Executando função complexa...');
+            
+            // Mostrar resultado na tela
+            const resultado = document.getElementById('resultado');
+            const textoResultado = document.getElementById('texto-resultado');
+            
+            textoResultado.textContent = 'JavaScript funcionando PERFEITAMENTE! ✅';
+            resultado.style.display = 'block';
+            
+            // Alterar cor de fundo
+            document.body.style.backgroundColor = '#d1fae5';
+            
+            setTimeout(() => {
+                alert('✅ TESTE 4 COMPLETO! JavaScript 100% funcional!');
+                document.body.style.backgroundColor = '#f0f0f0';
+            }, 1000);
+        }
+        
+        // Auto-teste no carregamento
+        window.addEventListener('load', function() {
+            console.log('🎯 Página carregada! Testando JavaScript...');
+        });
+    </script>
+</body>
+</html>
