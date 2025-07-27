@@ -18,6 +18,10 @@ const nextConfig = {
     "*.macaly-app.com",
     "*.macaly-user-data.dev",
   ],
+  // Configurações para ambiente sandbox
+  experimental: {
+    allowedRevalidateHeaderKeys: [],
+  }
 };
 
 module.exports = nextConfig;
