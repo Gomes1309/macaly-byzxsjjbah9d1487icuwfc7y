@@ -1,120 +1,474 @@
 import { createClient } from '@supabase/supabase-js'
+import bcrypt from 'bcryptjs'
 
-// Configuração do Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+// Configuração do Supabase com validação
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ecztnsabsugsgoffrqgn.supabase.co'
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjenRuc2Fic3Vnc2dvZmZycWduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI4NDg0NzYsImV4cCI6MjA2ODQyNDQ3Nn0.rM6l8ds8KTYJ93PpSmG4gf76gBD6-X6xOtoJrpAUf2c'
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
-
-// Tipos para o banco de dados
-export interface DatabaseAlvara {
-  id: string
-  empresa: string
-  cnpj: string
-  tipo: 'vigilancia_sanitaria' | 'bombeiro' | 'municipal'
-  numero_protocolo: string
-  data_emissao: string
-  data_vencimento: string
-  observacoes?: string
-  responsavel: string
-  contato: string
-  created_at?: string
-  updated_at?: string
+// Validação das variáveis
+if (!supabaseUrl) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL is required')
 }
 
-// Serviços para interagir com o banco
-export class AlvaraService {
-  static async getAll(): Promise<DatabaseAlvara[]> {
-    const { data, error } = await supabase
-      .from('alvaras')
-      .select('*')
-      .order('created_at', { ascending: false })
+if (!supabaseAnonKey) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is required')
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// Cliente administrativo para operações que requerem privilégios elevados
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjenRuc2Fic3Vnc2dvZmZycWduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1Mjg0ODQ3NiwiZXhwIjoyMDY4NDI0NDc2fQ.FcdJfEb8jksh4IJa9ZB5f9TK7dX-T2Kia_nPJHTBBW4'
+
+export const supabaseAdmin = createClient(
+  supabaseUrl,
+  serviceRoleKey,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+)
+
+// Função para gerar senha temporária segura
+export function generateTemporaryPassword(length: number = 12): string {
+  const upperCase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const lowerCase = 'abcdefghijklmnopqrstuvwxyz'
+  const numbers = '0123456789'
+  const symbols = '!@#$%&*'
+  const allChars = upperCase + lowerCase + numbers + symbols
+  
+  let password = ''
+  
+  // Garantir pelo menos um caractere de cada tipo
+  password += upperCase[Math.floor(Math.random() * upperCase.length)]
+  password += lowerCase[Math.floor(Math.random() * lowerCase.length)]
+  password += numbers[Math.floor(Math.random() * numbers.length)]
+  password += symbols[Math.floor(Math.random() * symbols.length)]
+  
+  // Completar com caracteres aleatórios
+  for (let i = 4; i < length; i++) {
+    password += allChars[Math.floor(Math.random() * allChars.length)]
+  }
+  
+  // Embaralhar a senha
+  return password.split('').sort(() => 0.5 - Math.random()).join('')
+}
+
+// Função para criar hash de senha usando bcrypt
+export async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12
+  return await bcrypt.hash(password, saltRounds)
+}
+
+// Função para verificar senha
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return await bcrypt.compare(password, hash)
+}
+
+// Função para validar CPF/CNPJ
+export function validateCpfCnpj(cpfCnpj: string): { valid: boolean; type: 'cpf' | 'cnpj' | null } {
+  const numbers = cpfCnpj.replace(/\D/g, '')
+  
+  if (numbers.length === 11) {
+    // Validação CPF
+    if (numbers === '00000000000') return { valid: false, type: null }
     
-    if (error) {
-      console.error('Erro ao buscar alvarás:', error)
-      throw error
+    let sum = 0
+    for (let i = 0; i < 9; i++) {
+      sum += parseInt(numbers[i]) * (10 - i)
+    }
+    let remainder = (sum * 10) % 11
+    if (remainder === 10) remainder = 0
+    if (remainder !== parseInt(numbers[9])) return { valid: false, type: null }
+    
+    sum = 0
+    for (let i = 0; i < 10; i++) {
+      sum += parseInt(numbers[i]) * (11 - i)
+    }
+    remainder = (sum * 10) % 11
+    if (remainder === 10) remainder = 0
+    if (remainder !== parseInt(numbers[10])) return { valid: false, type: null }
+    
+    return { valid: true, type: 'cpf' }
+  } else if (numbers.length === 14) {
+    // Validação CNPJ
+    if (numbers === '00000000000000') return { valid: false, type: null }
+    
+    let sum = 0
+    const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    for (let i = 0; i < 12; i++) {
+      sum += parseInt(numbers[i]) * weights1[i]
+    }
+    let remainder = sum % 11
+    if (remainder < 2) remainder = 0
+    else remainder = 11 - remainder
+    if (remainder !== parseInt(numbers[12])) return { valid: false, type: null }
+    
+    sum = 0
+    const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    for (let i = 0; i < 13; i++) {
+      sum += parseInt(numbers[i]) * weights2[i]
+    }
+    remainder = sum % 11
+    if (remainder < 2) remainder = 0
+    else remainder = 11 - remainder
+    if (remainder !== parseInt(numbers[13])) return { valid: false, type: null }
+    
+    return { valid: true, type: 'cnpj' }
+  }
+  
+  return { valid: false, type: null }
+}
+
+// Função para criar conta de responsável automaticamente
+export async function createResponsavelAccount(clienteData: {
+  nome: string
+  email: string
+  cpfCnpj: string
+  telefone?: string
+  clienteId: string
+  cargo?: string
+}) {
+  try {
+    console.log('Iniciando criação de conta de responsável:', clienteData)
+    
+    // Validar CPF/CNPJ
+    const validation = validateCpfCnpj(clienteData.cpfCnpj)
+    if (!validation.valid) {
+      throw new Error('CPF/CNPJ inválido')
     }
     
-    return data || []
-  }
-
-  static async create(alvara: Omit<DatabaseAlvara, 'id' | 'created_at' | 'updated_at'>): Promise<DatabaseAlvara> {
-    const { data, error } = await supabase
-      .from('alvaras')
-      .insert([alvara])
+    // Gerar senha temporária
+    const senhaTemporaria = generateTemporaryPassword()
+    const senhaHash = await hashPassword(senhaTemporaria)
+    
+    // Extrair CPF (se for pessoa física) ou usar os primeiros 11 dígitos do CNPJ
+    const numbers = clienteData.cpfCnpj.replace(/\D/g, '')
+    const cpf = validation.type === 'cpf' ? numbers : numbers.substring(0, 11)
+    
+    // Verificar se responsável já existe
+    const { data: existingResponsavel } = await supabase
+      .from('responsaveis')
+      .select('id')
+      .eq('email', clienteData.email)
+      .single()
+    
+    if (existingResponsavel) {
+      throw new Error('Já existe um responsável cadastrado com este email')
+    }
+    
+    // Criar responsável
+    const responsavelData = {
+      nome: clienteData.nome,
+      email: clienteData.email,
+      cpf: cpf,
+      telefone: clienteData.telefone,
+      senha_hash: senhaHash,
+      status: 'ativo',
+      data_cadastro: new Date().toISOString().split('T')[0],
+      observacoes: 'Conta criada automaticamente pelo sistema'
+    }
+    
+    console.log('Dados do responsável:', { ...responsavelData, senha_hash: '[HASH_OCULTO]' })
+    
+    const { data: responsavel, error: responsavelError } = await supabase
+      .from('responsaveis')
+      .insert([responsavelData])
       .select()
       .single()
     
-    if (error) {
-      console.error('Erro ao criar alvará:', error)
-      throw error
+    if (responsavelError) {
+      console.error('Erro ao criar responsável:', responsavelError)
+      throw new Error(`Erro ao criar responsável: ${responsavelError.message}`)
     }
     
-    return data
-  }
-
-  static async update(id: string, alvara: Partial<DatabaseAlvara>): Promise<DatabaseAlvara> {
-    const { data, error } = await supabase
-      .from('alvaras')
-      .update({ ...alvara, updated_at: new Date().toISOString() })
-      .eq('id', id)
+    console.log('Responsável criado:', responsavel)
+    
+    // Criar vínculo responsável-cliente
+    const vinculoData = {
+      responsavel_id: responsavel.id,
+      cliente_id: clienteData.clienteId,
+      cargo: clienteData.cargo || 'Proprietário',
+      permissoes: {
+        documentos: true,
+        download: true,
+        notificacoes: true
+      },
+      status: 'ativo',
+      data_vinculacao: new Date().toISOString().split('T')[0],
+      observacoes: 'Vínculo criado automaticamente'
+    }
+    
+    console.log('Dados do vínculo:', vinculoData)
+    
+    const { data: vinculo, error: vinculoError } = await supabase
+      .from('responsavel_cliente')
+      .insert([vinculoData])
       .select()
       .single()
     
-    if (error) {
-      console.error('Erro ao atualizar alvará:', error)
-      throw error
+    if (vinculoError) {
+      console.error('Erro ao criar vínculo:', vinculoError)
+      throw new Error(`Erro ao criar vínculo: ${vinculoError.message}`)
     }
     
-    return data
-  }
-
-  static async delete(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('alvaras')
-      .delete()
-      .eq('id', id)
+    console.log('Vínculo criado:', vinculo)
     
-    if (error) {
-      console.error('Erro ao deletar alvará:', error)
-      throw error
+    return {
+      responsavel,
+      vinculo,
+      senhaTemporaria,
+      message: `Conta criada com sucesso! Senha temporária: ${senhaTemporaria}`
     }
+    
+  } catch (error) {
+    console.error('Erro ao criar conta de responsável:', error)
+    throw error
   }
 }
 
-// Autenticação
-export class AuthService {
-  static async signIn(email: string, password: string) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
+// Função para criar conta de usuário interno automaticamente
+export async function createUsuarioAccount(usuarioData: {
+  nome: string
+  email: string
+  cargo: string
+  departamento: string
+  permissoes?: Record<string, boolean>
+}) {
+  try {
+    console.log('Iniciando criação de conta de usuário:', usuarioData)
     
-    if (error) {
-      console.error('Erro no login:', error)
-      throw error
+    // Verificar se usuário já existe
+    const { data: existingUsuario } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('email', usuarioData.email)
+      .single()
+    
+    if (existingUsuario) {
+      throw new Error('Já existe um usuário cadastrado com este email')
     }
     
-    return data
+    // Gerar senha temporária
+    const senhaTemporaria = generateTemporaryPassword()
+    
+    // Permissões padrão baseadas no cargo
+    const permissoesPadrao = getPermissoesPorCargo(usuarioData.cargo)
+    
+    // Criar usuário
+    const userData = {
+      nome: usuarioData.nome,
+      email: usuarioData.email,
+      cargo: usuarioData.cargo,
+      departamento: usuarioData.departamento,
+      permissoes: { ...permissoesPadrao, ...usuarioData.permissoes },
+      status: 'ativo',
+      ultimo_acesso: new Date().toISOString()
+    }
+    
+    console.log('Dados do usuário:', userData)
+    
+    const { data: usuario, error: usuarioError } = await supabase
+      .from('usuarios')
+      .insert([userData])
+      .select()
+      .single()
+    
+    if (usuarioError) {
+      console.error('Erro ao criar usuário:', usuarioError)
+      throw new Error(`Erro ao criar usuário: ${usuarioError.message}`)
+    }
+    
+    console.log('Usuário criado:', usuario)
+    
+    return {
+      usuario,
+      senhaTemporaria,
+      message: `Usuário criado com sucesso! Senha temporária: ${senhaTemporaria}`
+    }
+    
+  } catch (error) {
+    console.error('Erro ao criar conta de usuário:', error)
+    throw error
   }
+}
 
-  static async signOut() {
-    const { error } = await supabase.auth.signOut()
-    
-    if (error) {
-      console.error('Erro no logout:', error)
-      throw error
+// Função para obter permissões padrão por cargo
+function getPermissoesPorCargo(cargo: string): Record<string, boolean> {
+  const permissoes: Record<string, Record<string, boolean>> = {
+    'Administrador': {
+      dashboard: true,
+      documentos: true,
+      alvaras: true,
+      abertura: true,
+      obrigacoes: true,
+      usuarios: true,
+      relatorios: true
+    },
+    'Supervisor': {
+      dashboard: true,
+      documentos: true,
+      alvaras: true,
+      abertura: true,
+      obrigacoes: true,
+      relatorios: true
+    },
+    'Contador': {
+      dashboard: true,
+      documentos: true,
+      alvaras: true,
+      obrigacoes: true,
+      relatorios: true
+    },
+    'Assistente': {
+      dashboard: true,
+      documentos: true,
+      obrigacoes: true
+    },
+    'Estagiário': {
+      dashboard: true,
+      documentos: true
     }
   }
+  
+  return permissoes[cargo] || { dashboard: true }
+}
 
-  static async getSession() {
-    const { data: { session }, error } = await supabase.auth.getSession()
+// Função para notificar usuário sobre nova conta (placeholder para integração com email)
+export async function notifyNewAccount(email: string, senhaTemporaria: string, tipo: 'cliente' | 'usuario') {
+  console.log('Notificação de nova conta:', {
+    email,
+    senhaTemporaria,
+    tipo,
+    message: `Nova conta criada para ${email}. Senha temporária: ${senhaTemporaria}`
+  })
+  
+  // Aqui você pode integrar com um serviço de email como SendGrid, Mailgun, etc.
+  // Por enquanto, apenas logamos as informações
+  
+  // Simular envio de email (remover em produção)
+  const emailContent = `
+    Olá!
     
-    if (error) {
-      console.error('Erro ao obter sessão:', error)
-      throw error
+    Sua conta foi criada no sistema AG Assessoria.
+    
+    Email: ${email}
+    Senha temporária: ${senhaTemporaria}
+    
+    Por favor, faça login e altere sua senha no primeiro acesso.
+    
+    Atenciosamente,
+    Equipe AG Assessoria
+  `
+  
+  console.log('Conteúdo do email:', emailContent)
+  
+  return {
+    success: true,
+    message: 'Notificação enviada com sucesso (simulada)',
+    emailContent
+  }
+}
+
+// Função para testar conectividade do Supabase
+export async function testSupabaseConnectivity() {
+  console.log('🔍 Testando conectividade do Supabase...');
+  
+  const results = {
+    configured: false,
+    connected: false,
+    tablesExist: {
+      empresas: false,
+      documentos: false,
+      clientes: false,
+      usuarios: false
+    },
+    errors: [] as string[],
+    details: {} as Record<string, any>
+  };
+
+  try {
+    // 1. Verificar se as variáveis de ambiente estão configuradas
+    if (!supabaseUrl) {
+      results.errors.push('NEXT_PUBLIC_SUPABASE_URL não configurada');
+      return results;
+    }
+    if (!supabaseAnonKey) {
+      results.errors.push('NEXT_PUBLIC_SUPABASE_ANON_KEY não configurada');
+      return results;
     }
     
-    return session
+    results.configured = true;
+    results.details.url = supabaseUrl;
+    results.details.keyLength = supabaseAnonKey.length;
+    
+    console.log('✅ Configuração do Supabase válida');
+    
+    // 2. Testar conectividade básica
+    try {
+      const { data, error } = await supabase
+        .from('_supabase_sessions') // Tabela interna que sempre existe
+        .select('*')
+        .limit(0);
+        
+      if (error && !error.message.includes('permission denied')) {
+        // Se não for erro de permissão, é erro de conectividade
+        results.errors.push(`Conectividade: ${error.message}`);
+        return results;
+      }
+      
+      results.connected = true;
+      console.log('✅ Conectividade básica funcionando');
+      
+    } catch (connectError: any) {
+      results.errors.push(`Erro de conectividade: ${connectError?.message || String(connectError)}`);
+      return results;
+    }
+    
+    // 3. Verificar existência das tabelas principais
+    const tables = ['empresas', 'documentos', 'clientes', 'usuarios'];
+    
+    for (const table of tables) {
+      try {
+        const { error } = await supabase
+          .from(table)
+          .select('count(*)', { count: 'exact', head: true })
+          .limit(0);
+          
+        if (error) {
+          if (error.code === '42P01' || error.message.includes('does not exist')) {
+            results.errors.push(`Tabela ${table} não existe`);
+            results.tablesExist[table as keyof typeof results.tablesExist] = false;
+          } else {
+            // Tabela existe, mas houve outro erro
+            results.tablesExist[table as keyof typeof results.tablesExist] = true;
+            results.details[`${table}_error`] = error.message;
+          }
+        } else {
+          results.tablesExist[table as keyof typeof results.tablesExist] = true;
+          console.log(`✅ Tabela ${table} existe e acessível`);
+        }
+      } catch (tableError: any) {
+        results.errors.push(`Erro ao verificar tabela ${table}: ${tableError?.message || String(tableError)}`);
+      }
+    }
+    
+    // 4. Log detalhado dos resultados
+    console.log('🔍 Resultados da verificação de conectividade:', {
+      configured: results.configured,
+      connected: results.connected,
+      tablesExist: results.tablesExist,
+      errorsCount: results.errors.length,
+      errors: results.errors,
+      details: results.details
+    });
+    
+    return results;
+    
+  } catch (generalError: any) {
+    console.error('❌ Erro geral na verificação de conectividade:', generalError);
+    results.errors.push(`Erro geral: ${generalError?.message || String(generalError)}`);
+    return results;
   }
 }
